@@ -1,7 +1,7 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
-from torch import nn
+# from torch import nn
 
 
 # ---------------------------- Position Embeddings ---------------------------- #
@@ -37,7 +37,7 @@ def apply_rope_real(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> to
     对于每一对维度 (a, b)，旋转角度 θ 后的新向量 (a', b') 是:
 
         ⎡ a'⎤ = ⎡ cos(θ)  -sin(θ)⎤ ⎡ a ⎤
-        ⎣ b'⎦   ⎣ sin(θ)  cos(θ) ⎦ ⎣ b ⎦
+        ⎣ b'⎦ = ⎣ sin(θ)  cos(θ) ⎦ ⎣ b ⎦
 
     展开得:
 
