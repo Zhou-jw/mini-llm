@@ -1,5 +1,3 @@
-from typing import Optional, Tuple
-
 import torch
 from torch import nn
 from transformers.cache_utils import Cache
@@ -30,8 +28,8 @@ class StandardAttention(nn.Module):
         head_dim: int,
         rms_norm_eps: float,
         max_position_embeddings: int,
+        num_key_value_heads: int | None,
         attention_bias: bool = False,
-        num_key_value_heads: Optional[int] = None,
         rope_theta: float = 10000.0,
     ):
         super().__init__()
@@ -68,13 +66,13 @@ class StandardAttention(nn.Module):
         # 注意力缩放因子
         self.scaling = self.head_dim**-0.5
 
-    def forward(
+    def forward (
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[Cache] = None,
-        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None,
+        attention_mask: torch.Tensor | None,
+        past_key_values: Cache | None,
+        cache_position: torch.LongTensor | None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -101,7 +99,7 @@ class StandardAttention(nn.Module):
         query_states = (
             self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         )  # (batch_size, num_attention_heads, seq_len, head_dim)
-        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2) # (batch_size, num_kv_heads, seq_len, head_dim)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         # 2. apply rope embeddings
@@ -119,15 +117,15 @@ class StandardAttention(nn.Module):
         
         # 4. compute attention
         key_states = repeat_kv(key_states, self.num_key_value_groups) # (batch_size, num_attention_heads, k_len, head_dim)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups) # (batch_size, num_attention_heads, k_len, head_dim)
         
-        atten_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.scaling
-        atten_weights = torch.softmax(atten_weights, dim=-1, dtype=torch.float32)
+        atten_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.scaling # (batch_size, num_attention_heads, seq_len, k_len)
+        atten_weights = torch.softmax(atten_weights, dim=-1, dtype=torch.float32) # (batch_size, num_attention_heads, seq_len, k_len)
         
         output = torch.matmul(atten_weights, value_states) # (batch_size, num_attention_heads, seq_len, head_dim)
         
         output = output.transpose(1, 2).contiguous()
-        output = output.reshape(*input_shape, -1).contiguous() # (batch_size, seq_len, num_attention_heads * head_dim)
+        output = output.reshape(*input_shape, -1).contiguous() # (batch_size, seq_len, num_heads * head_dim)
         output = self.o_proj(output) # (batch_size, seq_len, hidden_size)
         
         return output, atten_weights
