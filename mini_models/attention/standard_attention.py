@@ -13,7 +13,6 @@ class StandardAttention(nn.Module):
         hidden_size (int): 隐藏层维度
         num_attention_heads (int): 注意力头数
         head_dim (int): 每个头的维度
-        rms_norm_eps (float): RMSNorm正则化系数
         attention_bias (bool): 是否使用注意力偏置
         # use_cache (bool): 是否使用KV Cache
         max_position_embeddings (int): 最大位置编码长度
@@ -26,7 +25,6 @@ class StandardAttention(nn.Module):
         hidden_size: int,
         num_attention_heads: int,
         head_dim: int,
-        rms_norm_eps: float,
         max_position_embeddings: int,
         num_key_value_heads: int | None,
         attention_bias: bool = False,
@@ -40,7 +38,6 @@ class StandardAttention(nn.Module):
         self.num_key_value_heads = (
             num_attention_heads if num_key_value_heads is None else num_key_value_heads
         )
-        self.rms_norm_eps = rms_norm_eps
         self.attention_bias = attention_bias
         self.max_position_embeddings = max_position_embeddings
         self.rope_theta = rope_theta
@@ -128,5 +125,5 @@ class StandardAttention(nn.Module):
         output = output.reshape(*input_shape, -1).contiguous() # (batch_size, seq_len, num_heads * head_dim)
         output = self.o_proj(output) # (batch_size, seq_len, hidden_size)
         
-        return output, atten_weights
+        return (output, atten_weights)
         

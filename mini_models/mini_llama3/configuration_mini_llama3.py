@@ -23,16 +23,16 @@ class MiniLlama3Config(PretrainedConfig):
 
     def __init__(
         self,
+        head_dim: int | None,
         vocab_size: int = -1,  # 加载时覆盖
         hidden_size: int = 768,
         intermediate_size: int = 2064,
         num_hidden_layers: int = 12,
         num_attention_heads: int = 12,
         num_key_value_heads: int = 4,
-        head_dim: int = None,
         rms_norm_eps: float = 1e-6,
         attention_bias: bool = False,
-        rope_theta: int = 10000.0,
+        rope_theta: float = 10000.0,
         use_cache: bool = True,
         max_position_embeddings: int = 512,
         **kwargs,
