@@ -11,5 +11,5 @@ class RMSNorm(torch.nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True) # (batch_size, seq_len, 1) 
         std = x.std(-1, keepdim=True)        
-        norm = self.weight * (x - mean) / std + self.eps + self.bias
+        norm = self.weight * (x - mean) / std + self.eps + self.bias # (batch_size, seq_len, d_model)
         return norm
