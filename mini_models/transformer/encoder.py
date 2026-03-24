@@ -20,10 +20,8 @@ class EncoderBlock(nn.Module):
         d_ff: int = 1024,
         dropout: float = 0.1,
         rms_norm_eps: float = 1e-6,
-        max_position_embeddings: int = 2048,
         num_key_value_heads: int | None = None,
         attention_bias: bool = False,
-        rope_theta: float = 10000.0,
     ):
         super().__init__()
         # Pre-LayerNorm: norm 在子层之前
@@ -34,10 +32,8 @@ class EncoderBlock(nn.Module):
             hidden_size=d_model,
             num_attention_heads=num_heads,
             head_dim=head_dim,
-            max_position_embeddings=max_position_embeddings,
             num_key_value_heads=num_key_value_heads,
             attention_bias=attention_bias,
-            rope_theta=rope_theta,
         )
         self.ff = FeedForward(d_model, d_ff, dropout)
         self.dropout1 = nn.Dropout(dropout)
@@ -71,7 +67,9 @@ class EncoderBlock(nn.Module):
         residual = x  # (batch_size, seq_len, d_model)
         x_norm = self.norm1(x)
         attn_output, _ = self.attention(
-            x_norm,
+            q = x_norm,
+            k = x_norm,
+            v = x_norm,
             position_embeddings=position_embeddings,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
@@ -98,18 +96,12 @@ class Encoder(nn.Module):
         d_ff: int = 1024,
         dropout: float = 0.1,
         rms_norm_eps: float = 1e-6,
-        max_position_embeddings: int = 2048,
         num_key_value_heads: int | None = None,
         attention_bias: bool = False,
-        rope_theta: float = 10000.0,
     ):
         super().__init__()
         self.head_dim = head_dim
-        self.rope = RotaryEmbedding(
-            head_dim=head_dim,
-            max_position_embeddings=max_position_embeddings,
-            rope_theta=rope_theta,
-        )
+
         self.layers = nn.ModuleList(
             [
                 EncoderBlock(
@@ -120,10 +112,8 @@ class Encoder(nn.Module):
                     d_ff,
                     dropout,
                     rms_norm_eps,
-                    max_position_embeddings,
                     num_key_value_heads,
                     attention_bias,
-                    rope_theta,
                 )
                 for i in range(num_layers)
             ]
@@ -159,25 +149,10 @@ class Encoder(nn.Module):
         """
         batch_size, seq_len, _ = x.shape
 
-        # 自动生成position_ids（如果未提供）
-        if position_ids is None:
-            if cache_position is not None:
-                position_ids = cache_position.unsqueeze(0).expand(batch_size, -1)
-            else:
-                position_ids = (
-                    torch.arange(seq_len, device=x.device)
-                    .unsqueeze(0)
-                    .expand(batch_size, -1)
-                )
-
-        # 使用RotaryEmbedding生成position_embeddings
-        position_embeddings = self.rope(x, position_ids=position_ids)
-
         for idx, layer in enumerate(self.layers):
             # 按层获取对应的KV缓存
             x, layer_past = layer(
                 x,
-                position_embeddings=position_embeddings,
                 attention_mask=attention_mask,
                 past_key_values=past_key_values,
                 cache_position=cache_position,
