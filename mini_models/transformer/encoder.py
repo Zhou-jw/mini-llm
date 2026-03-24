@@ -4,7 +4,6 @@ import torch
 from torch import nn
 from transformers.cache_utils import Cache
 
-from ..rope import RotaryEmbedding
 from ..attention import StandardAttention
 from .ffn import FeedForward
 from .rmsnorm import RMSNorm
@@ -123,7 +122,6 @@ class Encoder(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        position_ids: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         past_key_values: Cache | None = None,
         cache_position: torch.Tensor | None = None,
