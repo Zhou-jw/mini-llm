@@ -66,12 +66,16 @@ class Transformer(nn.Module):
         dec_self_attn_mask: torch.Tensor | None = None,
         dec_cross_attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """
-        src_tokens: [batch_size, src_seq_len] 
-        dst_tokens: [batch_size, dst_seq_len] 
-        src_mask: [batch_size, src_seq_len] 编码器多头自注意力的mask
-        self_attn_mask: [batch_size, dst_seq_len, dst_seq_len] 解码器多头自注意力mask
-        cross_attn_mask: [batch_size, dst_seq_len, src_seq_len] 交叉注意力的mask
+        """    
+        Input:
+            src_tokens: [batch_size, src_seq_len] 源序列的token
+            dst_tokens: [batch_size, dst_seq_len] 目标序列的token
+            enc_mask: [batch_size, src_seq_len] 编码器多头自注意力的mask
+            dec_self_attn_mask: [batch_size, dst_seq_len, dst_seq_len] 解码器多头自注意力mask
+            dec_cross_attn_mask: [batch_size, dst_seq_len, src_seq_len] 交叉注意力的mask
+            
+        Output:
+            dst_states: [batch_size, dst_seq_len, hidden_size] 目标序列的状态
         """
         src_pos_ids = (
             torch.arange(src_tokens.size(1), device=src_tokens.device)
