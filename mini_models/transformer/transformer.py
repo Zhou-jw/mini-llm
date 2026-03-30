@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 
-from ..rope import RotaryEmbedding, apply_rope
 from .decoder import Decoder
 from .encoder import Encoder
 
@@ -35,11 +34,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.src_embedding = nn.Embedding(src_vocab_size, d_model)
         self.dst_embedding = nn.Embedding(dst_vocab_size, d_model)
-        self.rope = RotaryEmbedding(
-            head_dim=head_dim,
-            max_position_embeddings=max_position_embeddings,
-            rope_theta=rope_theta,
-        )
+
 
         self.encoder = Encoder(
             d_model=d_model,
@@ -77,31 +72,19 @@ class Transformer(nn.Module):
         Output:
             dst_states: [batch_size, dst_seq_len, hidden_size] 目标序列的状态
         """
-        src_pos_ids = (
-            torch.arange(src_tokens.size(1), device=src_tokens.device)
-            .unsqueeze(0)
-            .expand(src_tokens.size(0), -1)
-        )
-        src_embeddings = self.src_embedding(src_tokens)
-        src_cos, src_sin = self.rope(src_embeddings, position_ids=src_pos_ids)
-        src_states = apply_rope(src_embeddings, (src_cos, src_sin))
-        src_states = self.dropout(src_states)
-        enc_output = self.encoder(src_states, enc_mask)
 
-        dst_pos_ids = (
-            torch.arange(src_tokens.size(1), device=dst_tokens.device)
-            .unsqueeze(0)
-            .expand(src_tokens.size(0), -1)
-        )
+        src_embeddings = self.src_embedding(src_tokens)
+        src_states = self.dropout(src_embeddings)
+        enc_output, enc_position_ids = self.encoder(src_states, enc_mask)
+
         dst_embeddings = self.dst_embedding(dst_tokens)
-        dst_cos, dst_sin = self.rope(dst_embeddings, position_ids=dst_pos_ids)
-        dst_states = apply_rope(dst_embeddings, (dst_cos, dst_sin))
-        dst_states = self.dropout(dst_states)
+        dst_states = self.dropout(dst_embeddings)
         dec_output = self.decoder(
             dst_states,
             enc_output,
             self_attn_mask=dec_self_attn_mask,
             cross_attn_mask=dec_cross_attn_mask,
+            enc_position_ids=enc_position_ids,
         )
 
         output = self.fc(dec_output)

@@ -1,23 +1,11 @@
-from aiohttp.hdrs import FROM
 import json
-import torch
 from typing import Dict, List, Tuple
 
 import numpy as np
+import torch
+from .utils import *
+from .tokenizer import cn_tokenizer, en_tokenizer
 from torch.utils.data import DataLoader, Dataset, random_split
-
-
-def en_tokenizer(text: str) -> list[str]:
-    text = text.lower().strip()
-    punctuations = r""".,!?;:'"()[]{}"""
-    for p in punctuations:
-        text = text.replace(p, f" {p} ")
-    return [t for t in text.split() if t]
-
-
-def cn_tokenizer(text: str) -> list[str]:
-    return list(text)
-
 
 # 由token转换为token_id
 def text2id(
@@ -49,7 +37,13 @@ def text2id(
         with open(f"{dict_path}/{language}_dict_token2id.json", "r") as f:
             dict = json.load(f)
 
-    token_id = [dict[t] for t in token]
+    try:
+        token_id = [dict[t] for t in token]
+    except KeyError as e:
+        # 明确告诉你哪个词不在词典里
+        print(f"\n❌ 报错：词【{e}】不在词典中！ token={token}")
+        raise  # 继续抛出错误，方便定位
+    # token_id = [dict[t] for t in token]
     token_id = [dict["<sos>"]] + token_id + [dict["<eos>"]]
     if len(token_id) < max_len:
         token_id += [dict["<pad>"]] * (max_len - len(token_id))
@@ -105,8 +99,8 @@ class TranslateDataset(Dataset):
     def __init__(
         self,
         dataset,
-        en_dict_token2id: Dict[str, int],
-        cn_dict_token2id: Dict[str, int],
+        en_vocab: Dict[str, int],
+        cn_vocab: Dict[str, int],
     ):
         """构建中英翻译数据集
 
@@ -116,26 +110,18 @@ class TranslateDataset(Dataset):
             cn_dict_token2id : 中文字典, token -> id
         """
         self.dataset = dataset
-        self.en_vocab = en_dict_token2id
-        self.cn_vocab = cn_dict_token2id
+        self.en_vocab = en_vocab
+        self.cn_vocab = cn_vocab
 
         en_tokens: List[List[int]] = []
         cn_tokens: List[List[int]] = []
 
         for data in self.dataset:
-            en_tokens.append(
-                text2id(data["english"], language="en", dict=en_dict_token2id)
-            )
-            cn_tokens.append(
-                text2id(data["chinese"], language="cn", dict=cn_dict_token2id)
-            )
+            en_tokens.append(text2id(data["english"], language="en", dict=en_vocab))
+            cn_tokens.append(text2id(data["chinese"], language="cn", dict=cn_vocab))
 
-        self.en_tokens = np.array(
-            en_tokens
-        )  # (total_data_size, en_seq_len)
-        self.cn_tokens = np.array(
-            cn_tokens
-        )  # (total_data_size, cn_seq_len)
+        self.en_tokens = np.array(en_tokens)  # (total_data_size, en_seq_len)
+        self.cn_tokens = np.array(cn_tokens)  # (total_data_size, cn_seq_len)
 
     def __len__(self):
         return len(self.dataset)
@@ -145,3 +131,22 @@ class TranslateDataset(Dataset):
         cn_seq = self.cn_tokens[index]
         return torch.from_numpy(en_seq), torch.from_numpy(cn_seq)
 
+
+def get_dataloader(batch_size: int = 32) -> Tuple[DataLoader, DataLoader, Dict, Dict]:
+    dataset = get_dataset()
+    en_vocab = get_en_vocab()
+    cn_vocab = get_cn_vocab()
+
+    translate_dataset = TranslateDataset(dataset, en_vocab=en_vocab, cn_vocab=cn_vocab)
+    val_size = 1000
+    train_size = len(dataset) - val_size
+    train_dataset, val_dataset = random_split(translate_dataset, [train_size, val_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, en_vocab, cn_vocab
+
+
+if __name__ == "__main__":
+    train_loader, val_loader, en_vocab, cn_vocab = get_dataloader()

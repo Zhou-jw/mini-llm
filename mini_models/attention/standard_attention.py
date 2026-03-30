@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from transformers.cache_utils import Cache
 
-from ..rope import apply_rope
+from ..rope import RotaryEmbedding, apply_rope
 from .utils import repeat_kv
 
 
@@ -26,6 +26,8 @@ class StandardAttention(nn.Module):
         head_dim: int,
         num_key_value_heads: int | None,
         attention_bias: bool = False,
+        max_position_embeddings: int = 2048,
+        rope_theta: float = 10000.0,
     ):
         super().__init__()
         self.layer_idx = layer_idx
@@ -55,6 +57,12 @@ class StandardAttention(nn.Module):
             self.num_attention_heads * self.head_dim, hidden_size, bias=attention_bias
         )
 
+        self.rope = RotaryEmbedding(
+            head_dim=head_dim,
+            max_position_embeddings=max_position_embeddings,
+            rope_theta=rope_theta,
+        )
+
         # 注意力缩放因子
         self.scaling = self.head_dim**-0.5
 
@@ -66,7 +74,8 @@ class StandardAttention(nn.Module):
         attention_mask: torch.Tensor | None,
         past_key_values: Cache | None,
         cache_position: torch.LongTensor | None,
-        **kwargs,
+        q_position_ids: torch.Tensor | None,
+        kv_position_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         兼容 transformers 的 attention 前向传播
@@ -85,21 +94,20 @@ class StandardAttention(nn.Module):
         """
         batch_size, q_len, _ = q.shape  # (batch_size, seq_len)
         _, k_len, _ = k.shape
-
+        # (batch_size, q_len, num_attention_heads, head_dim)
         q_shape = (
             batch_size,
             q_len,
             self.num_attention_heads,
             self.head_dim,
-        )  # (batch_size, q_len, num_attention_heads, head_dim)
-
+        )
         k_shape = (
             batch_size,
             k_len,
-            self.num_attention_heads,
+            self.num_key_value_heads,
             self.head_dim,
         )
-        
+
         # 1. build query, key, value
         # (batch_size, num_attention_heads, seq_len, head_dim)
         query_states = self.q_proj(q).view(q_shape).transpose(1, 2)
@@ -107,11 +115,22 @@ class StandardAttention(nn.Module):
         key_states = self.k_proj(k).view(k_shape).transpose(1, 2)
         value_states = self.v_proj(v).view(k_shape).transpose(1, 2)
 
+        if q_position_ids is None:
+            q_position_ids = (
+            torch.arange(q_len, device=q.device).unsqueeze(0).expand(batch_size, -1)
+            )
+        cos, sin = self.rope(query_states, position_ids=q_position_ids)
+        query_states = apply_rope(query_states, (cos, sin))
+
+        if kv_position_ids is None:
+            kv_position_ids = q_position_ids
+        cos, sin = self.rope(key_states, position_ids=kv_position_ids)
+        key_states = apply_rope(key_states, (cos, sin))
         # 3. update cache
         if past_key_values is not None:
             # 缓存 kwargs（传递给 CacheLayerMixin 的 update 方法）
-            cache_kwargs = {"cache_position": cache_position, **kwargs}
-            
+            cache_kwargs = {"cache_position": cache_position}
+
             # 唯一正确的缓存更新方式：调用 Cache.update
             # 该方法内部会自动拼接历史 K/V + 当前 K/V，并返回拼接后的完整 K/V
             key_states, value_states = past_key_values.update(
@@ -120,7 +139,7 @@ class StandardAttention(nn.Module):
                 layer_idx=self.layer_idx,
                 cache_kwargs=cache_kwargs,
             )
-            
+
         # 4. compute attention
         key_states = repeat_kv(
             key_states, self.num_key_value_groups

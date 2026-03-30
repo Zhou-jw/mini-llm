@@ -65,6 +65,8 @@ class DecoderBlock(nn.Module):
         past_key_values: Cache | None = None,
         cross_past_key_values: Cache | None = None,
         cache_position: torch.LongTensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        enc_position_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # 1. Self-attention block
         residual = x
@@ -74,6 +76,7 @@ class DecoderBlock(nn.Module):
             k=x_norm,
             v=x_norm,
             attention_mask=self_attn_mask,
+            q_position_ids=position_ids,
             past_key_values=past_key_values,
             cache_position=cache_position,
         )
@@ -87,6 +90,8 @@ class DecoderBlock(nn.Module):
             k=enc_output,
             v=enc_output,
             attention_mask=cross_attn_mask,
+            q_position_ids=position_ids,
+            kv_position_ids=enc_position_ids,
             past_key_values=cross_past_key_values,
             cache_position=None,
         )
@@ -141,9 +146,12 @@ class Decoder(nn.Module):
         past_key_values: Cache | None = None,
         cross_past_key_values: Cache | None = None,
         cache_position: torch.Tensor | None = None,
+        enc_position_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
-
+        position_ids = (
+            torch.arange(seq_len, device=x.device).unsqueeze(0).expand(batch_size, -1)
+        )
         for idx, layer in enumerate(self.layers):
             x = layer(
                 x=x,
@@ -153,6 +161,8 @@ class Decoder(nn.Module):
                 past_key_values=past_key_values,
                 cross_past_key_values=cross_past_key_values,
                 cache_position=cache_position,
+                position_ids=position_ids,
+                enc_position_ids = enc_position_ids
             )
 
         # 最终归一化（小模型关键，防止梯度爆炸）

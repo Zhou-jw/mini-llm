@@ -41,11 +41,11 @@ class EncoderBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
         attention_mask: torch.Tensor | None = None,
         past_key_values: Cache | None = None,
+        position_ids: torch.Tensor | None = None,
         cache_position: torch.LongTensor | None = None,
-    ) -> Tuple[torch.Tensor, Cache | None]:
+    ) -> torch.Tensor:
         """
         Args:
             x: 输入张量，(batch_size, seq_len, d_model)
@@ -59,18 +59,16 @@ class EncoderBlock(nn.Module):
                 - 输出张量：形状 (batch_size, seq_len, d_model)
                 - 更新后的Cache对象：None表示未使用缓存
         """
-        if position_embeddings is None:
-            raise ValueError("position_embeddings must be provided")
 
         # Pre-LayerNorm: 先 norm 再 attention，最后加残差
         residual = x  # (batch_size, seq_len, d_model)
         x_norm = self.norm1(x)
         attn_output, _ = self.attention(
-            q = x_norm,
-            k = x_norm,
-            v = x_norm,
-            position_embeddings=position_embeddings,
+            q=x_norm,
+            k=x_norm,
+            v=x_norm,
             attention_mask=attention_mask,
+            q_position_ids=position_ids,
             past_key_values=past_key_values,
             cache_position=cache_position,
         )
@@ -82,7 +80,7 @@ class EncoderBlock(nn.Module):
         ff_output = self.ff(x_norm)
         x = residual + self.dropout2(ff_output)
 
-        return x, past_key_values
+        return x
 
 
 class Encoder(nn.Module):
@@ -125,7 +123,7 @@ class Encoder(nn.Module):
         attention_mask: torch.Tensor | None = None,
         past_key_values: Cache | None = None,
         cache_position: torch.Tensor | None = None,
-    ) -> Tuple[torch.Tensor, Cache | None]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             x: 输入张量，形状 [batch_size, seq_len, d_model]
@@ -135,9 +133,9 @@ class Encoder(nn.Module):
             cache_position: 缓存位置索引，形状 [seq_len] 或 [batch_size, seq_len]
 
         Returns:
-            Tuple[torch.Tensor, Cache | None]:
+            Tuple[torch.Tensor, torch.Tensor]:
                 - 输出张量：形状 [batch_size, seq_len, d_model]
-                - 更新后的Cache对象：None表示未使用缓存
+                - position_ids：形状 [batch_size, seq_len]
 
         优化前向逻辑：
         1. 支持KV缓存（推理时复用past_key_values）
@@ -146,12 +144,16 @@ class Encoder(nn.Module):
         4. 集成RoPE位置编码，自动生成position_embeddings
         """
         batch_size, seq_len, _ = x.shape
+        position_ids = (
+            torch.arange(seq_len, device=x.device).unsqueeze(0).expand(batch_size, -1)
+        )
 
         for idx, layer in enumerate(self.layers):
             # 按层获取对应的KV缓存
-            x, layer_past = layer(
+            x = layer(
                 x,
                 attention_mask=attention_mask,
+                position_ids=position_ids,
                 past_key_values=past_key_values,
                 cache_position=cache_position,
             )
@@ -160,7 +162,7 @@ class Encoder(nn.Module):
         x = self.final_norm(x)
 
         # 返回输出和更新后的KV缓存
-        return x, past_key_values
+        return x, position_ids
 
     def count_parameters(self) -> float:
         """辅助函数：计算Encoder参数量（单位：MB），验证是否在目标区间"""
