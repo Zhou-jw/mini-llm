@@ -1,4 +1,3 @@
-from regex import S
 import json
 from collections import Counter
 
@@ -28,10 +27,11 @@ if __name__ == "__main__":
     en_vocab = []
     cn_vocab = []
     dataset = get_dataset()
-    
+
     import os
+
     SAVE_DIR = os.path.join(os.path.dirname(__file__), "dataset")
-    
+
     for data in tqdm(dataset, desc="Building Vocabulary"):
         en_text = data["english"]
         cn_text = data["chinese"]
@@ -93,4 +93,3 @@ if __name__ == "__main__":
     中文字典大小为：2839
     中文最长序列长度为：44
     """
-

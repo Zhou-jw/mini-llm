@@ -132,10 +132,12 @@ class TranslateDataset(Dataset):
         return torch.from_numpy(en_seq), torch.from_numpy(cn_seq)
 
 
-def get_dataloader(batch_size: int = 32) -> Tuple[DataLoader, DataLoader, Dict, Dict]:
+def get_dataloader(batch_size: int = 32) -> Tuple[DataLoader, DataLoader, Dict, Dict, Dict, Dict]:
     dataset = get_dataset()
     en_vocab = get_en_vocab()
     cn_vocab = get_cn_vocab()
+    en_id2token = get_en_id2token()
+    cn_id2token = get_cn_id2token()
 
     translate_dataset = TranslateDataset(dataset, en_vocab=en_vocab, cn_vocab=cn_vocab)
     val_size = 1000
@@ -145,8 +147,8 @@ def get_dataloader(batch_size: int = 32) -> Tuple[DataLoader, DataLoader, Dict, 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader, en_vocab, cn_vocab
+    return train_loader, val_loader, en_vocab, cn_vocab, en_id2token, cn_id2token
 
 
 if __name__ == "__main__":
-    train_loader, val_loader, en_vocab, cn_vocab = get_dataloader()
+    train_loader, val_loader, en_vocab, cn_vocab, en_id2token, cn_id2token = get_dataloader()

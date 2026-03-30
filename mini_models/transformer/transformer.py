@@ -58,8 +58,8 @@ class Transformer(nn.Module):
         src_tokens: torch.Tensor,
         dst_tokens: torch.Tensor,
         enc_mask: torch.Tensor | None = None,
-        dec_self_attn_mask: torch.Tensor | None = None,
         dec_cross_attn_mask: torch.Tensor | None = None,
+        dec_self_attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """    
         Input:
